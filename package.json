@@ -19,7 +19,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "typeorm": "typeorm-ts-node-commonjs -d src/data-source.ts"
+    "typeorm": "typeorm-ts-node-commonjs -d src/data-source.ts",
+    "seed:admin": "ts-node -r tsconfig-paths/register src/seeds/seed-admin.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^12.0.1",
@@ -32,6 +33,7 @@
     "@nestjs/swagger": "^12.1.1",
     "@nestjs/throttler": "^6.7.1",
     "@nestjs/typeorm": "^12.0.3",
+    "argon2": "^0.45.2",
     "bcrypt": "^6.0.0",
     "bullmq": "^6.7.1",
     "class-transformer": "^0.5.1",
