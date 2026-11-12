@@ -1,16 +1,18 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseGuards, Get } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
+// import { JwtAuthGuard } from './guards/jwt-auth.guard';
+// import { CurrentUser } from './decorators/current-user.decorator';
 
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+// import { ApiBearerAuth } from '@nestjs/swagger';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) {}
-
     @Post('register')
     @HttpCode(HttpStatus.CREATED)
     @ApiOperation({ summary: 'Register a new user ' })

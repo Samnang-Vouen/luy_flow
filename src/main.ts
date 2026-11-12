@@ -12,7 +12,17 @@ async function bootstrap() {
     .setTitle('LuyFlow API')
     .setDescription('API documentation for LuyFlow')
     .setVersion('1.0')
-    .addBearerAuth()
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'JWT',
+        description: 'Enter JWT access token',
+        in: 'header',
+      },
+      'access-token', // this name is referenced below
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
