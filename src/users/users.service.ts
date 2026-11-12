@@ -1,7 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
+import { hashPassword, verifyPassword } from '../auth/utils/hash.util';
 
 @Injectable()
 export class UsersService {
@@ -35,4 +36,41 @@ export class UsersService {
         });
         return this.usersRepository.save(user);
     }
+    async updateProfile(
+        userId: string,
+        updates: { name?: string; preferences?: Record<string, any> },
+    ): Promise<User> {
+        const user = await this.findById(userId);
+        if (!user) {
+        throw new NotFoundException('User not found');
+        }
+
+        if (updates.name !== undefined) {
+        user.name = updates.name;
+        }
+        if (updates.preferences !== undefined) {
+        user.preferences = updates.preferences;
+        }
+
+        return this.usersRepository.save(user);
+    }
+    async changePassword(
+        userId: string,
+        currentPassword: string,
+        newPassword: string,
+    ): Promise<void> {
+        const user = await this.findById(userId);
+        if (!user) {
+        throw new NotFoundException('User not found');
+        }
+
+        const isValid = await verifyPassword(user.passwordHash, currentPassword);
+        if (!isValid) {
+        throw new UnauthorizedException('Current password is incorrect');
+        }
+
+        user.passwordHash = await hashPassword(newPassword);
+        await this.usersRepository.save(user);
+    }
+
 }
