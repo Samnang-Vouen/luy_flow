@@ -26,6 +26,9 @@ export class SessionsService {
         });
         return this.sessionsRepository.save(session);
     }
+    async findAll(): Promise<Session[]> {
+        return this.sessionsRepository.find();
+    }
     
     async findAllByUser(userId: string): Promise<Session[]> {
         return this.sessionsRepository.find({ where: { userId } });
