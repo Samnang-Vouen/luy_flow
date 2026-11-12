@@ -10,6 +10,8 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -64,5 +66,24 @@ export class AuthController {
     async logoutAll(@CurrentUser() user: { userId: string }) {
         await this.authService.logoutAll(user.userId);
         return { message: 'All sessions revoked' };
+    }
+
+    @Post('forgot-password')
+    @HttpCode(HttpStatus.ACCEPTED)
+    @ApiOperation({ summary: 'Request a password reset token' })
+    @ApiResponse({ status: 202, description: 'Generic reset confirmation' })
+    async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.authService.forgotPassword(dto.email);
+    return { message: 'If that email exists, a reset link has been sent.' };
+    }
+
+    @Post('reset-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Reset password using a reset token' })
+    @ApiResponse({ status: 200, description: 'Password updated' })
+    @ApiResponse({ status: 401, description: 'Invalid or expired reset token' })
+    async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto.resetToken, dto.newPassword);
+    return { message: 'Password updated successfully' };
     }
 }

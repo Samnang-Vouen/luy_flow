@@ -73,4 +73,27 @@ export class UsersService {
         await this.usersRepository.save(user);
     }
 
+    async setResetToken(
+        userId: string,
+        resetTokenHash: string,
+        expiresAt: Date,
+    ): Promise<void> {
+        await this.usersRepository.update(userId, {
+            resetPasswordTokenHash: resetTokenHash,
+            resetPasswordExpiresAt: expiresAt,
+        });
+    }
+
+        async findAll(): Promise<User[]> {
+        return this.usersRepository.find();
+    }
+
+    async resetPassword(userId: string, newPasswordHash: string): Promise<void> {
+        await this.usersRepository.update(userId, {
+            passwordHash: newPasswordHash,
+            resetPasswordTokenHash: null,
+            resetPasswordExpiresAt: null,
+        });
+        }
+
 }

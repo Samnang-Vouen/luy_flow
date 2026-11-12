@@ -26,6 +26,12 @@ export enum UserRole {
         
     @Column({ type: 'jsonb', nullable: true })
     preferences: Record<string, any> | null;
+        
+    @Column({ type: 'varchar', nullable: true })
+    resetPasswordTokenHash: string | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    resetPasswordExpiresAt: Date | null;
 
     @CreateDateColumn()
     createdAt: Date;

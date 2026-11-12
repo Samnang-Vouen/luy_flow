@@ -158,4 +158,58 @@ export class AuthService {
     async logoutAll(userId: string): Promise<void> {
         await this.sessionsService.deleteAllByUser(userId);
     }
+
+
+    async forgotPassword(email: string): Promise<void> {
+        const user = await this.usersService.findByEmail(email);
+        if (!user) {
+            // Don't reveal whether the email exists — generic response either way
+            return;
+        }
+
+        const resetToken = randomBytes(32).toString('hex');
+        const resetTokenHash = await hashPassword(resetToken);
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
+
+        await this.usersService.setResetToken(user.id, resetTokenHash, expiresAt);
+
+        // NOTE: no email provider is wired up yet — logging the token here
+        // so you can test the flow manually. Replace with real email sending later.
+        console.log(`Password reset token for ${email}: ${resetToken}`);
+        }
+
+        async resetPassword(resetToken: string, newPassword: string): Promise<void> {
+        const users = await this.usersService.findAll();
+
+        let matchedUser = null;
+        for (const user of users) {
+            if (!user.resetPasswordTokenHash) continue;
+            try {
+            const isMatch = await verifyPassword(user.resetPasswordTokenHash, resetToken);
+            if (isMatch) {
+                matchedUser = user;
+                break;
+            }
+            } catch {
+            continue;
+            }
+        }
+
+        if (!matchedUser) {
+            throw new UnauthorizedException('Invalid or expired reset token');
+        }
+
+        if (
+            !matchedUser.resetPasswordExpiresAt ||
+            matchedUser.resetPasswordExpiresAt.getTime() < Date.now()
+        ) {
+            throw new UnauthorizedException('Invalid or expired reset token');
+        }
+
+        const newPasswordHash = await hashPassword(newPassword);
+        await this.usersService.resetPassword(matchedUser.id, newPasswordHash);
+
+        // Also revoke all sessions for safety after password reset
+        await this.sessionsService.deleteAllByUser(matchedUser.id);
+    }
 }
