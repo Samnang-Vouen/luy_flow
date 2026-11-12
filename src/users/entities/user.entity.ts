@@ -38,4 +38,7 @@ export enum UserRole {
 
     @UpdateDateColumn()
     updatedAt: Date;
+        
+    @Column({ type: 'boolean', default: true })
+    isActive: boolean;
 }

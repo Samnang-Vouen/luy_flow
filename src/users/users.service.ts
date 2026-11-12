@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { User } from './entities/user.entity';
+import { User, UserRole } from './entities/user.entity';
 import { hashPassword, verifyPassword } from '../auth/utils/hash.util';
 
 @Injectable()
@@ -94,6 +94,38 @@ export class UsersService {
             resetPasswordTokenHash: null,
             resetPasswordExpiresAt: null,
         });
+    }
+    
+    async findAllPaginated(page: number, limit: number): Promise<[User[], number]> {
+        return this.usersRepository.findAndCount({
+            skip: (page - 1) * limit,
+            take: limit,
+            order: { createdAt: 'DESC' },
+        });
         }
+
+    async countActiveAdmins(): Promise<number> {
+    return this.usersRepository.count({
+        where: { role: UserRole.ADMIN, isActive: true },
+    });
+}
+
+    async updateStatus(userId: string, isActive: boolean): Promise<User> {
+        const user = await this.findById(userId);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+        user.isActive = isActive;
+        return this.usersRepository.save(user);
+    }
+
+    async updateRole(userId: string, role: UserRole): Promise<User> {
+        const user = await this.findById(userId);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+        user.role = role;
+        return this.usersRepository.save(user);
+    }
 
 }

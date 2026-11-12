@@ -7,6 +7,7 @@ import { resolve } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { SessionsModule } from './sessions/sessions.module';
+import { AdminModule } from './admin/admin.module';
 import databaseConfig from './config/database.config';
 
 @Module({
@@ -21,6 +22,7 @@ import databaseConfig from './config/database.config';
     AuthModule,
     UsersModule,
     SessionsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
