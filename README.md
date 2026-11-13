@@ -25,6 +25,22 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Automation modules
+
+The application includes three authenticated modules:
+
+- `recurring-transactions` lets users create, list, update, pause/resume, and delete recurring transaction schedules. It stores schedule details only; it does not yet execute transactions. Execution must be integrated with the Accounts/Transactions module.
+- `notifications` provides in-app notification listing, unread counts, and mark-as-read. Other modules can create notifications through the exported `NotificationsService`; no email delivery or event producer is configured yet.
+- `audit-logs` provides each user with their recent audit entries. The exported `AuditLogsService` can be called by other modules to record actions. Do not include passwords, tokens, or other secrets in audit metadata.
+
+The new tables are created by the `AddAutomationModules` migration. Apply pending migrations with:
+
+```bash
+npm run typeorm -- migration:run
+```
+
+Recurring schedules currently reference an account by ID without a database foreign key because the Accounts module is still being developed. Coordinate with its owner before integrating payment execution.
+
 ## Project setup
 
 ```bash
