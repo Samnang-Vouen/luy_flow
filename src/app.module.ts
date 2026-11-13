@@ -12,6 +12,7 @@ import databaseConfig from './config/database.config';
 import { RecurringTransactionsModule } from './recurring-transactions/recurring-transactions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { AccountsModule } from './accounts/accounts.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
     UsersModule,
     SessionsModule,
     AdminModule,
+    AccountsModule,
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
