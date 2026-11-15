@@ -14,6 +14,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { CategoriesModule } from './categories/categories.module';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { CategoriesModule } from './categories/categories.module';
     AdminModule,
     AccountsModule,
     CategoriesModule,
+    PaymentMethodsModule,
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
