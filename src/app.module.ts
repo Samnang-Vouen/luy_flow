@@ -1,7 +1,8 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { resolve } from 'path';
 import { AuthModule } from './auth/auth.module';
@@ -12,6 +13,11 @@ import databaseConfig from './config/database.config';
 import { RecurringTransactionsModule } from './recurring-transactions/recurring-transactions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { AccountsModule } from './accounts/accounts.module';
+import { CategoriesModule } from './categories/categories.module';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
+import { TransactionsModule } from './transactions/transactions.module';
+import { ImportsModule } from './imports/imports.module';
 
 @Module({
   imports: [
@@ -22,10 +28,26 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
       cache: true,
     }),
     TypeOrmModule.forRootAsync(databaseConfig.asProvider()),
+    // Shared Redis connection for all BullMQ queues; modules register their own queues.
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get<string>('REDIS_HOST') ?? 'localhost',
+          port: Number(config.get('REDIS_PORT') ?? 6379),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
+        },
+      }),
+    }),
     AuthModule,
     UsersModule,
     SessionsModule,
     AdminModule,
+    AccountsModule,
+    CategoriesModule,
+    PaymentMethodsModule,
+    TransactionsModule,
+    ImportsModule,
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
