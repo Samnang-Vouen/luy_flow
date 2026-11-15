@@ -1,0 +1,251 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AccountsService } from '../accounts/accounts.service';
+import { Account } from '../accounts/entities/account.entity';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { CategoriesService } from '../categories/categories.service';
+import { PaymentMethodsService } from '../payment-methods/payment-methods.service';
+import { CreateTransactionDto } from './dto/create-transaction.dto';
+import {
+  ListTransactionsQueryDto,
+  TransactionSortBy,
+} from './dto/list-transactions-query.dto';
+import { UpdateTransactionDto } from './dto/update-transaction.dto';
+import { Transaction, TransactionType } from './entities/transaction.entity';
+
+// Whitelist of sortable columns: user input never reaches ORDER BY directly.
+const SORT_COLUMNS: Record<TransactionSortBy, string> = {
+  [TransactionSortBy.DATE]: 't.date',
+  [TransactionSortBy.AMOUNT]: 't.amount',
+  [TransactionSortBy.CREATED_AT]: 't.createdAt',
+};
+
+@Injectable()
+export class TransactionsService {
+  constructor(
+    @InjectRepository(Transaction)
+    private readonly transactionsRepository: Repository<Transaction>,
+    private readonly accountsService: AccountsService,
+    private readonly categoriesService: CategoriesService,
+    private readonly paymentMethodsService: PaymentMethodsService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
+
+  async create(userId: string, dto: CreateTransactionDto) {
+    const account = await this.getActiveAccount(userId, dto.accountId);
+    if (dto.categoryId) {
+      await this.assertCategoryUsable(userId, dto.categoryId, dto.type, true);
+    }
+    if (dto.paymentMethodId) {
+      await this.assertPaymentMethodUsable(userId, dto.paymentMethodId);
+    }
+
+    const transaction = await this.transactionsRepository.save(
+      this.transactionsRepository.create({
+        userId,
+        accountId: account.id,
+        currency: account.currency,
+        categoryId: dto.categoryId ?? null,
+        paymentMethodId: dto.paymentMethodId ?? null,
+        type: dto.type,
+        amount: dto.amount.toFixed(2),
+        date: dto.date,
+        description: this.normalizeDescription(dto.description),
+      }),
+    );
+    await this.auditLogsService.record({
+      actorUserId: userId,
+      action: 'transaction.created',
+      resourceType: 'transaction',
+      resourceId: transaction.id,
+    });
+    return transaction;
+  }
+
+  async findAll(userId: string, query: ListTransactionsQueryDto) {
+    if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo');
+    }
+    if (
+      query.minAmount !== undefined &&
+      query.maxAmount !== undefined &&
+      query.minAmount > query.maxAmount
+    ) {
+      throw new BadRequestException('minAmount must be less than or equal to maxAmount');
+    }
+
+    const qb = this.transactionsRepository
+      .createQueryBuilder('t')
+      .where('t.userId = :userId', { userId });
+
+    if (query.type) qb.andWhere('t.type = :type', { type: query.type });
+    if (query.accountId) {
+      qb.andWhere('t.accountId = :accountId', { accountId: query.accountId });
+    }
+    if (query.categoryId) {
+      qb.andWhere('t.categoryId = :categoryId', { categoryId: query.categoryId });
+    }
+    if (query.paymentMethodId) {
+      qb.andWhere('t.paymentMethodId = :paymentMethodId', {
+        paymentMethodId: query.paymentMethodId,
+      });
+    }
+    if (query.dateFrom) {
+      qb.andWhere('t.date >= :dateFrom', { dateFrom: query.dateFrom });
+    }
+    if (query.dateTo) qb.andWhere('t.date <= :dateTo', { dateTo: query.dateTo });
+    if (query.minAmount !== undefined) {
+      qb.andWhere('t.amount >= :minAmount', { minAmount: query.minAmount });
+    }
+    if (query.maxAmount !== undefined) {
+      qb.andWhere('t.amount <= :maxAmount', { maxAmount: query.maxAmount });
+    }
+    if (query.search) {
+      qb.andWhere('t.description ILIKE :search', {
+        search: `%${escapeLike(query.search)}%`,
+      });
+    }
+
+    // Secondary keys keep the order stable across pages when values tie.
+    qb.orderBy(SORT_COLUMNS[query.sortBy], query.sortOrder)
+      .addOrderBy('t.createdAt', query.sortOrder)
+      .addOrderBy('t.id', query.sortOrder)
+      .skip((query.page - 1) * query.limit)
+      .take(query.limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page: query.page, limit: query.limit };
+  }
+
+  async findOwned(userId: string, id: string) {
+    const transaction = await this.transactionsRepository.findOne({
+      where: { id, userId },
+    });
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+    return transaction;
+  }
+
+  async update(userId: string, id: string, dto: UpdateTransactionDto) {
+    const transaction = await this.findOwned(userId, id);
+
+    const nextType = dto.type ?? transaction.type;
+    const nextCategoryId =
+      dto.categoryId === undefined ? transaction.categoryId : dto.categoryId;
+    const categoryChanged = nextCategoryId !== transaction.categoryId;
+    const typeChanged = nextType !== transaction.type;
+
+    if (dto.accountId !== undefined && dto.accountId !== transaction.accountId) {
+      const account = await this.getActiveAccount(userId, dto.accountId);
+      transaction.accountId = account.id;
+      transaction.currency = account.currency;
+    }
+
+    // Re-check the category when it changes, or when the type changes under it.
+    // An already-linked category may stay even if it was archived later.
+    if (nextCategoryId && (categoryChanged || typeChanged)) {
+      await this.assertCategoryUsable(
+        userId,
+        nextCategoryId,
+        nextType,
+        categoryChanged,
+      );
+    }
+
+    if (
+      dto.paymentMethodId !== undefined &&
+      dto.paymentMethodId !== transaction.paymentMethodId &&
+      dto.paymentMethodId !== null
+    ) {
+      await this.assertPaymentMethodUsable(userId, dto.paymentMethodId);
+    }
+
+    transaction.type = nextType;
+    transaction.categoryId = nextCategoryId ?? null;
+    if (dto.paymentMethodId !== undefined) {
+      transaction.paymentMethodId = dto.paymentMethodId;
+    }
+    if (dto.amount !== undefined) transaction.amount = dto.amount.toFixed(2);
+    if (dto.date !== undefined) transaction.date = dto.date;
+    if (dto.description !== undefined) {
+      transaction.description = this.normalizeDescription(dto.description);
+    }
+
+    const updated = await this.transactionsRepository.save(transaction);
+    await this.auditLogsService.record({
+      actorUserId: userId,
+      action: 'transaction.updated',
+      resourceType: 'transaction',
+      resourceId: id,
+    });
+    return updated;
+  }
+
+  async delete(userId: string, id: string): Promise<void> {
+    const transaction = await this.findOwned(userId, id);
+    await this.transactionsRepository.remove(transaction);
+    await this.auditLogsService.record({
+      actorUserId: userId,
+      action: 'transaction.deleted',
+      resourceType: 'transaction',
+      resourceId: id,
+      metadata: {
+        accountId: transaction.accountId,
+        type: transaction.type,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        date: transaction.date,
+      },
+    });
+  }
+
+  private async getActiveAccount(userId: string, accountId: string): Promise<Account> {
+    const account = await this.accountsService.findOwned(userId, accountId);
+    if (account.isArchived) {
+      throw new BadRequestException('Account is archived');
+    }
+    return account;
+  }
+
+  private async assertCategoryUsable(
+    userId: string,
+    categoryId: string,
+    type: TransactionType,
+    rejectArchived: boolean,
+  ) {
+    const category = await this.categoriesService.findOwned(userId, categoryId);
+    if (rejectArchived && category.isArchived) {
+      throw new BadRequestException('Category is archived');
+    }
+    if (String(category.type) !== String(type)) {
+      throw new BadRequestException(
+        `Category type (${category.type}) does not match transaction type (${type})`,
+      );
+    }
+  }
+
+  private async assertPaymentMethodUsable(userId: string, paymentMethodId: string) {
+    const paymentMethod = await this.paymentMethodsService.findOwned(
+      userId,
+      paymentMethodId,
+    );
+    if (paymentMethod.isArchived) {
+      throw new BadRequestException('Payment method is archived');
+    }
+  }
+
+  private normalizeDescription(description?: string | null) {
+    return description ? description : null;
+  }
+}
+
+/** Escapes LIKE wildcards so a search for "50%" matches literally. */
+function escapeLike(term: string) {
+  return term.replace(/[\\%_]/g, '\\$&');
+}

@@ -15,6 +15,7 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { CategoriesModule } from './categories/categories.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
+import { TransactionsModule } from './transactions/transactions.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
     AccountsModule,
     CategoriesModule,
     PaymentMethodsModule,
+    TransactionsModule,
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
