@@ -13,6 +13,7 @@ import { RecurringTransactionsModule } from './recurring-transactions/recurring-
 import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { AccountsModule } from './accounts/accounts.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AccountsModule } from './accounts/accounts.module';
     SessionsModule,
     AdminModule,
     AccountsModule,
+    CategoriesModule,
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
