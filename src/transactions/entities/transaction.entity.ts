@@ -19,12 +19,22 @@ export enum TransactionType {
   EXPENSE = 'expense',
 }
 
+export enum TransactionSource {
+  MANUAL = 'manual',
+  IMPORT = 'import',
+}
+
 @Entity('transactions')
 @Check('CHK_transactions_amount_positive', '"amount" > 0')
 @Index('IDX_transactions_userId_date', ['userId', 'date'])
 @Index('IDX_transactions_accountId', ['accountId'])
 @Index('IDX_transactions_categoryId', ['categoryId'])
 @Index('IDX_transactions_paymentMethodId', ['paymentMethodId'])
+@Index('IDX_transactions_importId', ['importId'])
+@Index('UQ_transactions_accountId_externalRef', ['accountId', 'externalRef'], {
+  unique: true,
+  where: '"externalRef" IS NOT NULL',
+})
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -74,6 +84,24 @@ export class Transaction {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   description: string | null;
+
+  @Column({
+    type: 'enum',
+    enum: TransactionSource,
+    default: TransactionSource.MANUAL,
+  })
+  source: TransactionSource;
+
+  @Column({ type: 'uuid', nullable: true })
+  importId: string | null;
+
+  /** Bank reference (e.g. REF# from the statement). Unique per account when present. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  externalRef: string | null;
+
+  /** Original bank text, kept for auditing and re-parsing. */
+  @Column({ type: 'text', nullable: true })
+  rawDetails: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

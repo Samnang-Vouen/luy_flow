@@ -14,7 +14,10 @@ import {
   Min,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { TransactionType } from '../entities/transaction.entity';
+import {
+  TransactionSource,
+  TransactionType,
+} from '../entities/transaction.entity';
 import { DATE_ONLY_PATTERN } from './create-transaction.dto';
 
 export enum TransactionSortBy {
@@ -58,6 +61,16 @@ export class ListTransactionsQueryDto {
   @IsOptional()
   @IsUUID()
   paymentMethodId?: string;
+
+  @ApiPropertyOptional({ enum: TransactionSource })
+  @IsOptional()
+  @IsEnum(TransactionSource)
+  source?: TransactionSource;
+
+  @ApiPropertyOptional({ description: 'Only transactions created by this import' })
+  @IsOptional()
+  @IsUUID()
+  importId?: string;
 
   @ApiPropertyOptional({ example: '2026-11-01', description: 'Inclusive, YYYY-MM-DD' })
   @IsOptional()
