@@ -12,6 +12,9 @@ import databaseConfig from './config/database.config';
 import { RecurringTransactionsModule } from './recurring-transactions/recurring-transactions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { SavingsGoalsModule } from './savings-goals/savings-goals.module';
+import { DebtsModule } from './debts/debts.module';
+import { GroupsModule } from './groups/groups.module';
 
 @Module({
   imports: [
@@ -29,6 +32,9 @@ import { AuditLogsModule } from './audit-logs/audit-logs.module';
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
+    SavingsGoalsModule,
+    DebtsModule,
+    GroupsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
