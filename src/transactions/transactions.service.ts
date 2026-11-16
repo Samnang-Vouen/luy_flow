@@ -58,6 +58,24 @@ export interface ImportedTransactionInput {
   rawDetails?: string | null;
 }
 
+export type TransactionFilters = Omit<
+  ListTransactionsQueryDto,
+  'page' | 'limit' | 'sortBy' | 'sortOrder'
+>;
+
+export interface TransactionExportRow {
+  /** YYYY-MM-DD */
+  date: string;
+  type: TransactionType;
+  /** Decimal string, e.g. "500.00" */
+  amount: string;
+  currency: string;
+  description: string | null;
+  accountName: string;
+  categoryName: string | null;
+  paymentMethodName: string | null;
+}
+
 export type DuplicateCheckCandidate = Pick<
   Transaction,
   'id' | 'type' | 'amount' | 'date' | 'description' | 'externalRef'
@@ -106,6 +124,72 @@ export class TransactionsService {
   }
 
   async findAll(userId: string, query: ListTransactionsQueryDto) {
+    const qb = this.buildFilteredQuery(userId, query);
+
+    // Secondary keys keep the order stable across pages when values tie.
+    qb.orderBy(SORT_COLUMNS[query.sortBy], query.sortOrder)
+      .addOrderBy('t.createdAt', query.sortOrder)
+      .addOrderBy('t.id', query.sortOrder)
+      .skip((query.page - 1) * query.limit)
+      .take(query.limit);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total, page: query.page, limit: query.limit };
+  }
+
+  countForExport(userId: string, filters: TransactionFilters): Promise<number> {
+    return this.buildFilteredQuery(userId, filters).getCount();
+  }
+
+  async *iterateForExport(
+    userId: string,
+    filters: TransactionFilters,
+    batchSize = 1000,
+  ): AsyncGenerator<TransactionExportRow[]> {
+    for (let offset = 0; ; offset += batchSize) {
+      const rows = await this.buildFilteredQuery(userId, filters)
+        .leftJoin('t.account', 'a')
+        .leftJoin('t.category', 'c')
+        .leftJoin('t.paymentMethod', 'pm')
+        .select([])
+        .addSelect(`to_char(t.date, 'YYYY-MM-DD')`, 'date')
+        .addSelect('t.type', 'type')
+        .addSelect('t.amount', 'amount')
+        .addSelect('t.currency', 'currency')
+        .addSelect('t.description', 'description')
+        .addSelect('a.name', 'accountName')
+        .addSelect('c.name', 'categoryName')
+        .addSelect('pm.name', 'paymentMethodName')
+        .orderBy('t.date', 'ASC')
+        .addOrderBy('t.createdAt', 'ASC')
+        .addOrderBy('t.id', 'ASC')
+        .offset(offset)
+        .limit(batchSize)
+        .getRawMany<TransactionExportRow>();
+      if (rows.length > 0) yield rows;
+      if (rows.length < batchSize) return;
+    }
+  }
+
+  /** Transaction count per month ("YYYY-MM"), newest first. */
+  async countByMonth(
+    userId: string,
+    accountId?: string,
+  ): Promise<{ month: string; count: number }[]> {
+    const qb = this.transactionsRepository
+      .createQueryBuilder('t')
+      .select(`to_char(t.date, 'YYYY-MM')`, 'month')
+      .addSelect('COUNT(*)', 'count')
+      .where('t.userId = :userId', { userId });
+    if (accountId) qb.andWhere('t.accountId = :accountId', { accountId });
+    const rows = await qb
+      .groupBy('month')
+      .orderBy('month', 'DESC')
+      .getRawMany<{ month: string; count: string }>();
+    return rows.map((r) => ({ month: r.month, count: Number(r.count) }));
+  }
+
+  private buildFilteredQuery(userId: string, query: TransactionFilters) {
     if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
       throw new BadRequestException('dateFrom must be on or before dateTo');
     }
@@ -152,16 +236,7 @@ export class TransactionsService {
         search: `%${escapeLike(query.search)}%`,
       });
     }
-
-    // Secondary keys keep the order stable across pages when values tie.
-    qb.orderBy(SORT_COLUMNS[query.sortBy], query.sortOrder)
-      .addOrderBy('t.createdAt', query.sortOrder)
-      .addOrderBy('t.id', query.sortOrder)
-      .skip((query.page - 1) * query.limit)
-      .take(query.limit);
-
-    const [data, total] = await qb.getManyAndCount();
-    return { data, total, page: query.page, limit: query.limit };
+    return qb;
   }
 
   async findOwned(userId: string, id: string) {
