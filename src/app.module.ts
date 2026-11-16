@@ -19,6 +19,9 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { ImportsModule } from './imports/imports.module';
 import { ExportsModule } from './exports/exports.module';
+import { BudgetsModule } from './budgets/budgets.module';
+import { ReportsModule } from './reports/reports.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 
 @Module({
   imports: [
@@ -53,6 +56,9 @@ import { ExportsModule } from './exports/exports.module';
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
+    BudgetsModule,
+    ReportsModule,
+    RecommendationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
