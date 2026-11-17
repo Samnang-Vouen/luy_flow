@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "LuyFlow for TripSplit",
-    "description": "LuyFlow savings-goal API calls for the TripSplit integration (Phase 1). Run the requests top to bottom: login stores the tokens, and creating a goal stores its id. See docs/tripsplit-integration.md for the rules. Saved examples on each request can back a Postman mock server.",
+    "description": "LuyFlow OAuth and savings-goal API calls for the TripSplit integration (Phase 1). Set clientSecret and redirectUri first. Connect with folder 0 (OAuth, like TripSplit does) or folder 1 (password login, quicker for testing); both store the tokens. Then run folder 2 top to bottom: creating a goal stores its id. See docs/tripsplit-integration.md for the rules. Saved examples on each request can back a Postman mock server.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -9,7 +9,14 @@
     "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "clientId", "value": "tripsplit" },
+    { "key": "clientSecret", "value": "" },
+    { "key": "redirectUri", "value": "https://34-87-166-91.sslip.io/api/v1/integrations/luyflow/callback" },
+    { "key": "codeVerifier", "value": "" },
+    { "key": "codeChallenge", "value": "" },
+    { "key": "oauthState", "value": "" },
+    { "key": "authCode", "value": "" },
     { "key": "email", "value": "sokha@example.test" },
     { "key": "password", "value": "Kampot-2026!" },
     { "key": "tripId", "value": "trip-kampot-001" },
@@ -20,7 +27,230 @@
   ],
   "item": [
     {
-      "name": "1. Auth (temporary, until OAuth)",
+      "name": "0. OAuth (Connect LuyFlow)",
+      "description": "Run 'a' to make a PKCE pair and the login URL. Open authorizeUrl from the console in a browser, log in and tap Allow. Copy the code parameter from the address you land on into the authCode variable, then run 'b'.",
+      "item": [
+        {
+          "name": "a. Make PKCE pair and login URL (open in a browser)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Testing only: Math.random is fine here. Your server must use crypto.randomBytes.",
+                  "const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';",
+                  "let verifier = '';",
+                  "for (let i = 0; i < 64; i++) verifier += chars[Math.floor(Math.random() * chars.length)];",
+                  "const challenge = CryptoJS.SHA256(verifier).toString(CryptoJS.enc.Base64)",
+                  "  .replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+                  "pm.collectionVariables.set('codeVerifier', verifier);",
+                  "pm.collectionVariables.set('codeChallenge', challenge);",
+                  "pm.collectionVariables.set('oauthState', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const url = pm.request.url.toString();",
+                  "console.log('Open this in a browser, log in and tap Allow:\\n' + url);",
+                  "pm.test('LuyFlow shows its login page', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/oauth/authorize?response_type=code&client_id={{clientId}}&redirect_uri={{redirectUri}}&scope=savings:read%20savings:write&state={{oauthState}}&code_challenge={{codeChallenge}}&code_challenge_method=S256",
+              "host": ["{{baseUrl}}"],
+              "path": ["oauth", "authorize"],
+              "query": [
+                { "key": "response_type", "value": "code" },
+                { "key": "client_id", "value": "{{clientId}}" },
+                { "key": "redirect_uri", "value": "{{redirectUri}}" },
+                { "key": "scope", "value": "savings:read%20savings:write" },
+                { "key": "state", "value": "{{oauthState}}" },
+                { "key": "code_challenge", "value": "{{codeChallenge}}" },
+                { "key": "code_challenge_method", "value": "S256" }
+              ]
+            },
+            "description": "Returns LuyFlow's login and consent page (HTML). In a real browser, Allow redirects to redirectUri?code=...&state=..."
+          },
+          "response": []
+        },
+        {
+          "name": "b. Exchange code for tokens",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.access_token);",
+                  "  pm.collectionVariables.set('refreshToken', body.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "url": { "raw": "{{baseUrl}}/oauth/token", "host": ["{{baseUrl}}"], "path": ["oauth", "token"] },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "authorization_code" },
+                { "key": "code", "value": "{{authCode}}" },
+                { "key": "redirect_uri", "value": "{{redirectUri}}" },
+                { "key": "code_verifier", "value": "{{codeVerifier}}" },
+                { "key": "client_id", "value": "{{clientId}}" },
+                { "key": "client_secret", "value": "{{clientSecret}}" }
+              ]
+            },
+            "description": "Stores accessToken (15 minutes) and refreshToken. A code works once and expires after 10 minutes."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+                "url": { "raw": "{{baseUrl}}/oauth/token", "host": ["{{baseUrl}}"], "path": ["oauth", "token"] },
+                "body": { "mode": "urlencoded", "urlencoded": [{ "key": "grant_type", "value": "authorization_code" }] }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Cache-Control", "value": "no-store" }],
+              "body": "{\n  \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.signature\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 900,\n  \"refresh_token\": \"9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c\",\n  \"scope\": \"savings:read savings:write\"\n}"
+            },
+            {
+              "name": "400 Code used, expired or not matching",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+                "url": { "raw": "{{baseUrl}}/oauth/token", "host": ["{{baseUrl}}"], "path": ["oauth", "token"] },
+                "body": { "mode": "urlencoded", "urlencoded": [{ "key": "grant_type", "value": "authorization_code" }] }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"invalid_grant\",\n  \"error_description\": \"The code is invalid, expired, already used, or does not match\"\n}"
+            },
+            {
+              "name": "401 Wrong client secret",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+                "url": { "raw": "{{baseUrl}}/oauth/token", "host": ["{{baseUrl}}"], "path": ["oauth", "token"] },
+                "body": { "mode": "urlencoded", "urlencoded": [{ "key": "grant_type", "value": "authorization_code" }] }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"invalid_client\",\n  \"error_description\": \"Client authentication failed\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "c. Refresh tokens",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.access_token);",
+                  "  pm.collectionVariables.set('refreshToken', body.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "url": { "raw": "{{baseUrl}}/oauth/token", "host": ["{{baseUrl}}"], "path": ["oauth", "token"] },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "refresh_token" },
+                { "key": "refresh_token", "value": "{{refreshToken}}" },
+                { "key": "client_id", "value": "{{clientId}}" },
+                { "key": "client_secret", "value": "{{clientSecret}}" }
+              ]
+            },
+            "description": "Returns a new pair. The old refresh token stops working, so always store the new one."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+                "url": { "raw": "{{baseUrl}}/oauth/token", "host": ["{{baseUrl}}"], "path": ["oauth", "token"] },
+                "body": { "mode": "urlencoded", "urlencoded": [{ "key": "grant_type", "value": "refresh_token" }] }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Cache-Control", "value": "no-store" }],
+              "body": "{\n  \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock.signature2\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 900,\n  \"refresh_token\": \"1a3c5e7a9c1e3a5c7e9a1c3e5a7c9e1a\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "d. Disconnect (revoke)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "url": { "raw": "{{baseUrl}}/oauth/revoke", "host": ["{{baseUrl}}"], "path": ["oauth", "revoke"] },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "token", "value": "{{refreshToken}}" },
+                { "key": "client_id", "value": "{{clientId}}" },
+                { "key": "client_secret", "value": "{{clientSecret}}" }
+              ]
+            },
+            "description": "Always 200. The refresh token stops working; the current access token works until it expires."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+                "url": { "raw": "{{baseUrl}}/oauth/revoke", "host": ["{{baseUrl}}"], "path": ["oauth", "revoke"] }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Password login (quick testing only)",
       "item": [
         {
           "name": "Register (once per account)",
