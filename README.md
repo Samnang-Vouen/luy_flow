@@ -1,31 +1,127 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# LuyFlow API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+LuyFlow is a personal finance API: accounts, transactions, categories, budgets, reports, savings goals,
+debts, groups and bank statement import/export. It is built with NestJS, PostgreSQL and Redis (BullMQ),
+and lets TripSplit connect to user accounts through OAuth.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+[![CI](https://github.com/Samnang-Vouen/luy_flow/actions/workflows/ci.yml/badge.svg)](https://github.com/Samnang-Vouen/luy_flow/actions/workflows/ci.yml)
 
-## Description
+| | |
+| --- | --- |
+| Container image | [`ghcr.io/samnang-vouen/luyflow`](https://github.com/Samnang-Vouen/luy_flow/pkgs/container/luyflow) |
+| API docs | Swagger UI at `/api` (when `NODE_ENV` is not `production`) |
+| TripSplit integration | [docs/tripsplit-integration.md](docs/tripsplit-integration.md) and [deploy/tripsplit/](deploy/tripsplit/) |
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Run it from a clean clone (Docker)
 
-## Automation modules
+Requirements: Git and Docker with Compose v2 (Docker Desktop includes both). Nothing else is needed:
+Node, PostgreSQL and Redis all run in containers.
+
+```bash
+git clone https://github.com/Samnang-Vouen/luy_flow.git
+cd luy_flow
+cp .env.example .env
+```
+
+Fill in the empty required values in `.env`:
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_PASSWORD` | Any password (creates the database on first start) |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | Two different long random strings, e.g. from `openssl rand -hex 32` |
+
+Then build and start everything:
+
+```bash
+docker compose up -d --build --wait
+```
+
+`--wait` returns once all three containers are healthy. Database migrations run automatically when the API starts.
+
+**Check it works:**
+
+```bash
+curl http://localhost:3000/          # Hello World!
+docker compose ps                    # api, db and redis all "healthy"
+```
+
+Open <http://localhost:3000/api> for the Swagger docs. Create a user with `POST /auth/register`, then log in with
+`POST /auth/login`.
+
+| Task | Command |
+| --- | --- |
+| Logs | `docker compose logs -f api` |
+| Stop (keeps data) | `docker compose down` |
+| Delete all data | `docker compose down -v` |
+| Use another port | Set `API_PORT=3001` in `.env` |
+| Run a published image instead of building | `LUYFLOW_IMAGE=ghcr.io/samnang-vouen/luyflow:latest docker compose up -d --no-build --wait` |
+
+### What runs
+
+| Service | Image | Data | Health check |
+| --- | --- | --- | --- |
+| `api` | Built from `Dockerfile` | none (stateless) | `GET /` answers 200 |
+| `db` | `postgres:16` | volume `luyflow_pgdata` | `pg_isready` |
+| `redis` | `redis:7` (append-only file on) | volume `luyflow_redisdata` | `redis-cli ping` |
+
+Data survives `docker compose down` and container restarts; only `down -v` deletes the volumes.
+
+## Docker image
+
+The [`Dockerfile`](Dockerfile) builds in two stages:
+
+1. **build:** installs all dependencies and compiles TypeScript.
+2. **runtime:** `node:22-bookworm-slim` with production dependencies and the compiled `dist/` only.
+
+- Runs as the unprivileged `node` user, not root.
+- No source code, tests, `.env` files or secrets in the image ([`.dockerignore`](.dockerignore)).
+  All configuration comes from environment variables at run time.
+- A `HEALTHCHECK` on `GET /`. Pending migrations are applied on start, then Node runs as the main process, so
+  `docker stop` shuts it down gracefully.
+- OCI labels link the image to this repository, commit and version.
+- Built for `linux/amd64` and `linux/arm64`.
+
+## CI and image versions
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push to `main`:
+
+1. **Test:** `npm ci`, lint, build, unit tests, migrations, and e2e tests against PostgreSQL 16 and Redis 7.
+2. **Image:** builds the Docker image. Pull requests only build it. Pushes to `main` and tags also push it to GHCR.
+3. **Smoke test:** pulls the image that was just pushed, starts it with `compose.yaml` and checks that the API answers
+   and the migrations ran.
+
+| Event | Image tags |
+| --- | --- |
+| Every push to `main` | `sha-<7-char commit>` (e.g. `sha-3b9118f`) and `latest` |
+| Git tag `vX.Y.Z` | `X.Y.Z`, `X.Y` and `sha-<commit>` |
+
+Use a `sha-` or version tag to get a reproducible deployment, since `latest` moves.
+To release a version: `git tag v0.3.0 && git push origin v0.3.0`.
+
+## Run without Docker (development)
+
+Requirements: Node 22 (see `.nvmrc`), PostgreSQL 16 and Redis 7 running locally.
+
+```bash
+npm ci
+cp .env.example .env          # set DATABASE_HOST/PORT/USER/PASSWORD/NAME and the JWT secrets
+npm run typeorm -- migration:run
+npm run start:dev             # http://localhost:3000
+```
+
+| Command | What it does |
+| --- | --- |
+| `npm run start:dev` | Start with reload on change |
+| `npm run build` then `npm run start:prod` | Production build and start |
+| `npm run lint` | Lint (oxlint) |
+| `npm test` | Unit tests |
+| `npm run test:e2e` | E2E tests. Database suites run only with `RUN_DATABASE_TESTS=1`, and only against a local test database. |
+| `npm run typeorm -- migration:run` | Apply pending migrations (from `src/`) |
+| `npm run migration:run:prod` | Apply pending migrations from the compiled `dist/` (used by the Docker image) |
+
+## Modules
+
+### Automation modules
 
 The application includes three authenticated modules:
 
@@ -39,7 +135,7 @@ The new tables are created by the `AddAutomationModules` migration. Apply pendin
 npm run typeorm -- migration:run
 ```
 
-## Savings, debts and groups modules
+### Savings, debts and groups modules
 
 - `savings-goals`: personal goals with contributions. A goal becomes `completed` when the saved amount reaches the target, and the user gets a notification.
 - `debts`: money owed by or to the user, with payments. Overpayment is rejected; a debt becomes `paid` at zero.
@@ -49,90 +145,8 @@ Tables are created by the `AddSavingsDebtsGroups` migration. The schema is in `d
 
 Recurring schedules currently reference an account by ID without a database foreign key because the Accounts module is still being developed. Coordinate with its owner before integrating payment execution.
 
-## Project setup
+### OAuth (TripSplit)
 
-```bash
-$ npm install
-```
-
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+`/oauth/authorize`, `/oauth/token` and `/oauth/revoke` let TripSplit connect to a LuyFlow account without seeing the
+user's password. Configure the client with the `OAUTH_*` variables in `.env`. See
+[docs/tripsplit-integration.md](docs/tripsplit-integration.md).
