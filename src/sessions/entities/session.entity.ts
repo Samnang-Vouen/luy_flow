@@ -2,6 +2,7 @@ import {
     Column,
     CreateDateColumn,
     Entity,
+    Index,
     JoinColumn,
     ManyToOne,
     PrimaryGeneratedColumn,
@@ -9,6 +10,8 @@ import {
 import { User } from '../../users/entities/user.entity';
 
 @Entity('sessions')
+@Index('IDX_sessions_userId', ['userId'])
+@Index('IDX_sessions_expiresAt', ['expiresAt'])
 export class Session {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -20,6 +23,7 @@ export class Session {
     @JoinColumn({ name: 'userId' })
     user: User;
 
+    @Index('UQ_sessions_refreshTokenHash', { unique: true })
     @Column()
     refreshTokenHash: string;
 

@@ -1,5 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -30,10 +32,18 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: resolve(__dirname, '../.env'),
+      // process.cwd() works under both the CommonJS build and Jest's ESM
+      // runtime, where __dirname is not defined.
+      envFilePath: resolve(process.cwd(), '.env'),
       load: [databaseConfig],
       cache: true,
     }),
+    // Baseline limit for every route; auth endpoints override it per-handler.
+    // In-memory storage is per-instance — swap in the Redis storage when the
+    // API runs on more than one node.
+    ThrottlerModule.forRoot([
+      { name: 'default', ttl: 60_000, limit: 100 },
+    ]),
     TypeOrmModule.forRootAsync(databaseConfig.asProvider()),
     // Shared Redis connection for all BullMQ queues; modules register their own queues.
     BullModule.forRootAsync({
@@ -67,6 +77,9 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     RecommendationsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

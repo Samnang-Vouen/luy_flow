@@ -1,14 +1,16 @@
 import { ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { MoreThan, Repository } from 'typeorm';
 import { User, UserRole } from './entities/user.entity';
 import { hashPassword, verifyPassword } from '../auth/utils/hash.util';
+import { SessionsService } from '../sessions/sessions.service';
 
 @Injectable()
 export class UsersService {
     constructor(
         @InjectRepository(User)
         private readonly usersRepository: Repository<User>,
+        private readonly sessionsService: SessionsService,
     ) { }
     
     async findByEmail(email: string): Promise<User | null> {
@@ -71,6 +73,9 @@ export class UsersService {
 
         user.passwordHash = await hashPassword(newPassword);
         await this.usersRepository.save(user);
+
+        // A password change must invalidate every other device's refresh token.
+        await this.sessionsService.deleteAllByUser(userId);
     }
 
     async setResetToken(
@@ -86,6 +91,19 @@ export class UsersService {
 
         async findAll(): Promise<User[]> {
         return this.usersRepository.find();
+    }
+
+    /**
+     * Single indexed lookup by the SHA-256 digest of the reset token. Expiry is
+     * part of the filter, so callers only ever see live tokens.
+     */
+    async findByResetTokenHash(resetTokenHash: string): Promise<User | null> {
+        return this.usersRepository.findOne({
+            where: {
+                resetPasswordTokenHash: resetTokenHash,
+                resetPasswordExpiresAt: MoreThan(new Date()),
+            },
+        });
     }
 
     async resetPassword(userId: string, newPasswordHash: string): Promise<void> {

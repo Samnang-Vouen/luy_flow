@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
@@ -7,10 +7,12 @@ import { UsersService } from '../users/users.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { hashPassword, verifyPassword } from './utils/hash.util';
+import { hashPassword, hashToken, verifyPassword } from './utils/hash.util';
 
 @Injectable()
 export class AuthService {
+    private readonly logger = new Logger(AuthService.name);
+
     constructor(
         private readonly usersService: UsersService,
         private readonly sessionsService: SessionsService,
@@ -54,7 +56,7 @@ export class AuthService {
         ipAddress?: string,
     ) {
         const refreshToken = randomBytes(64).toString('hex');
-        const refreshTokenHash = await hashPassword(refreshToken);
+        const refreshTokenHash = hashToken(refreshToken);
         const ttlSeconds = Number(this.configService.get('JWT_REFRESH_TTL'));
         const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
@@ -80,6 +82,12 @@ export class AuthService {
         throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Deliberately the same message as a wrong password: a deactivated account
+    // must not be distinguishable from a non-existent one.
+    if (!user.isActive) {
+        throw new UnauthorizedException('Invalid credentials');
+    }
+
     const accessToken = this.generateAccessToken(user);
     const refreshToken = await this.createSessionWithRefreshToken(
         user.id,
@@ -91,67 +99,50 @@ export class AuthService {
     }
 
     async refresh(refreshToken: string, userAgent?: string, ipAddress?: string) {
-        const sessions = await this.sessionsService.findAll();
-
-    let matchedSession = null;
-    for (const session of sessions) {
-        try {
-        const isMatch = await verifyPassword(
-            session.refreshTokenHash,
-            refreshToken,
+        // Single indexed lookup by the token's digest — no scan, no Argon2.
+        const session = await this.sessionsService.findByRefreshTokenHash(
+            hashToken(refreshToken),
         );
-        if (isMatch) {
-            matchedSession = session;
-            break;
+
+        if (!session) {
+            throw new UnauthorizedException('Invalid refresh token');
         }
-        } catch {
-        // skip sessions with malformed/invalid hash data
-        continue;
+
+        if (session.expiresAt.getTime() < Date.now()) {
+            await this.sessionsService.deleteById(session.id);
+            throw new UnauthorizedException('Refresh token expired');
         }
-    }
 
-    if (!matchedSession) {
-        throw new UnauthorizedException('Invalid refresh token');
-    }
+        const user = await this.usersService.findById(session.userId);
+        if (!user || !user.isActive) {
+            // Deactivated or deleted: drop every session this user holds.
+            await this.sessionsService.deleteAllByUser(session.userId);
+            throw new UnauthorizedException('Invalid refresh token');
+        }
 
-    if (matchedSession.expiresAt.getTime() < Date.now()) {
-        await this.sessionsService.deleteById(matchedSession.id);
-        throw new UnauthorizedException('Refresh token expired');
-    }
+        // Rotate: the presented token is single-use.
+        await this.sessionsService.deleteById(session.id);
+        // Opportunistic cleanup; the DELETE is backed by IDX_sessions_expiresAt.
+        await this.sessionsService.deleteExpired();
 
-    const user = await this.usersService.findById(matchedSession.userId);
-    if (!user) {
-        throw new UnauthorizedException('User not found');
-    }
-
-    await this.sessionsService.deleteById(matchedSession.id);
-
-    const accessToken = this.generateAccessToken(user);
-    const newRefreshToken = await this.createSessionWithRefreshToken(
-        user.id,
-        userAgent,
-        ipAddress,
+        const accessToken = this.generateAccessToken(user);
+        const newRefreshToken = await this.createSessionWithRefreshToken(
+            user.id,
+            userAgent,
+            ipAddress,
         );
 
         return { accessToken, refreshToken: newRefreshToken };
     }
 
     async logout(refreshToken: string): Promise<void> {
-        const sessions = await this.sessionsService.findAll();
+        const session = await this.sessionsService.findByRefreshTokenHash(
+            hashToken(refreshToken),
+        );
 
-    for (const session of sessions) {
-        try {
-            const isMatch = await verifyPassword(
-            session.refreshTokenHash,
-            refreshToken,
-            );
-            if (isMatch) {
+        // Unknown or already-rotated tokens are a no-op: logout is idempotent.
+        if (session) {
             await this.sessionsService.deleteById(session.id);
-            return;
-            }
-        } catch {
-            continue;
-        }
         }
     }
 
@@ -168,48 +159,33 @@ export class AuthService {
         }
 
         const resetToken = randomBytes(32).toString('hex');
-        const resetTokenHash = await hashPassword(resetToken);
+        const resetTokenHash = hashToken(resetToken);
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
 
         await this.usersService.setResetToken(user.id, resetTokenHash, expiresAt);
 
-        // NOTE: no email provider is wired up yet — logging the token here
-        // so you can test the flow manually. Replace with real email sending later.
-        console.log(`Password reset token for ${email}: ${resetToken}`);
+        if (this.configService.get('NODE_ENV') !== 'production') {
+            // No mail transport is configured yet. In production this branch is
+            // skipped and the token never leaves the process.
+            this.logger.debug(`Password reset token for ${email}: ${resetToken}`);
         }
+    }
 
-        async resetPassword(resetToken: string, newPassword: string): Promise<void> {
-        const users = await this.usersService.findAll();
+    async resetPassword(resetToken: string, newPassword: string): Promise<void> {
+        // Expiry is part of the WHERE clause, so an expired token is simply
+        // "not found" — one indexed lookup instead of scanning every user.
+        const user = await this.usersService.findByResetTokenHash(
+            hashToken(resetToken),
+        );
 
-        let matchedUser = null;
-        for (const user of users) {
-            if (!user.resetPasswordTokenHash) continue;
-            try {
-            const isMatch = await verifyPassword(user.resetPasswordTokenHash, resetToken);
-            if (isMatch) {
-                matchedUser = user;
-                break;
-            }
-            } catch {
-            continue;
-            }
-        }
-
-        if (!matchedUser) {
-            throw new UnauthorizedException('Invalid or expired reset token');
-        }
-
-        if (
-            !matchedUser.resetPasswordExpiresAt ||
-            matchedUser.resetPasswordExpiresAt.getTime() < Date.now()
-        ) {
+        if (!user) {
             throw new UnauthorizedException('Invalid or expired reset token');
         }
 
         const newPasswordHash = await hashPassword(newPassword);
-        await this.usersService.resetPassword(matchedUser.id, newPasswordHash);
+        await this.usersService.resetPassword(user.id, newPasswordHash);
 
         // Also revoke all sessions for safety after password reset
-        await this.sessionsService.deleteAllByUser(matchedUser.id);
+        await this.sessionsService.deleteAllByUser(user.id);
     }
 }

@@ -1,4 +1,5 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseGuards, Get } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags,} from '@nestjs/swagger';
 import type { Request } from 'express';
 // import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -20,6 +21,7 @@ export class AuthController {
 
     @Post('register')
     @HttpCode(HttpStatus.CREATED)
+    @Throttle({ default: { limit: 5, ttl: 60_000 } })
     @ApiOperation({ summary: 'Register a new user' })
     @ApiResponse({ status: 201, description: 'User created successfully' })
     @ApiResponse({ status: 409, description: 'Email already in use' })
@@ -29,6 +31,7 @@ export class AuthController {
 
     @Post('login')
     @HttpCode(HttpStatus.OK)
+    @Throttle({ default: { limit: 5, ttl: 60_000 } })
     @ApiOperation({ summary: 'Login and receive tokens' })
     @ApiResponse({ status: 200, description: 'Access and refresh tokens issued' })
     @ApiResponse({ status: 401, description: 'Invalid credentials' })
@@ -40,6 +43,7 @@ export class AuthController {
 
     @Post('refresh')
     @HttpCode(HttpStatus.OK)
+    @Throttle({ default: { limit: 30, ttl: 60_000 } })
     @ApiOperation({ summary: 'Rotate refresh token and get new access token' })
     @ApiResponse({ status: 200, description: 'Rotated access/refresh tokens' })
     @ApiResponse({ status: 401, description: 'Invalid or expired refresh token' })
@@ -51,6 +55,7 @@ export class AuthController {
 
     @Post('logout')
     @HttpCode(HttpStatus.NO_CONTENT)
+    @Throttle({ default: { limit: 30, ttl: 60_000 } })
     @ApiOperation({ summary: 'Logout and revoke the given session' })
     @ApiResponse({ status: 204, description: 'Session revoked' })
     async logout(@Body() dto: RefreshDto) {
@@ -70,6 +75,7 @@ export class AuthController {
 
     @Post('forgot-password')
     @HttpCode(HttpStatus.ACCEPTED)
+    @Throttle({ default: { limit: 5, ttl: 60_000 } })
     @ApiOperation({ summary: 'Request a password reset token' })
     @ApiResponse({ status: 202, description: 'Generic reset confirmation' })
     async forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -79,6 +85,7 @@ export class AuthController {
 
     @Post('reset-password')
     @HttpCode(HttpStatus.OK)
+    @Throttle({ default: { limit: 5, ttl: 60_000 } })
     @ApiOperation({ summary: 'Reset password using a reset token' })
     @ApiResponse({ status: 200, description: 'Password updated' })
     @ApiResponse({ status: 401, description: 'Invalid or expired reset token' })
