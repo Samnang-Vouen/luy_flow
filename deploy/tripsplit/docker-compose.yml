@@ -1,0 +1,56 @@
+# LuyFlow API with its own PostgreSQL and Redis.
+#   1. cp .env.example .env   (then adjust the values)
+#   2. docker compose up -d   -> http://localhost:3001
+# See README.md.
+
+# Project name: containers are luyflow-api-1, luyflow-db-1, luyflow-redis-1 (and the volume luyflow_pgdata),
+# whatever folder this file is in.
+name: luyflow
+
+services:
+  api:
+    image: ${LUYFLOW_IMAGE:-ghcr.io/samnang-vouen/luyflow:0.1}
+    ports:
+      - "${LUYFLOW_PORT:-3001}:3000"
+    env_file: .env
+    environment:
+      # Fixed for the containers below; these are not read from .env.
+      PORT: 3000
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Stop early with a clear message if a required value is missing.
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      POSTGRES_DB: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+    # Uncomment to reach the database from your machine (e.g. with a DB client) on port 5433.
+    # ports:
+    #   - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+
+volumes:
+  pgdata:
