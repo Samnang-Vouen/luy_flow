@@ -6,7 +6,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { resolve } from 'path';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { SessionsModule } from './sessions/sessions.module';
@@ -35,6 +34,8 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
       // process.cwd() works under both the CommonJS build and Jest's ESM
       // runtime, where __dirname is not defined.
       envFilePath: resolve(process.cwd(), '.env'),
+      // Loads .env from the working directory (the repo root for all npm scripts).
+      // Not resolved from __dirname: that doesn't exist when Jest runs the app as ES modules.
       load: [databaseConfig],
       cache: true,
     }),
