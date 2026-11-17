@@ -4,6 +4,7 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "extensionsToTreatAsEsm": [".ts"],
+  "setupFilesAfterEnv": ["<rootDir>/jest-global.setup.ts"],
   "transform": {
     "^.+\\.ts$": [
       "ts-jest",
