@@ -10,14 +10,31 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import {
+  IDEMPOTENCY_HEADER,
+  IdempotencyInterceptor,
+} from '../common/idempotency/idempotency.interceptor';
 import { ContributeDto } from './dto/contribute.dto';
 import { CreateSavingsGoalDto } from './dto/create-savings-goal.dto';
 import { UpdateSavingsGoalDto } from './dto/update-savings-goal.dto';
 import { SavingsGoalsService } from './savings-goals.service';
+
+const IdempotencyKeyHeader = ApiHeader({
+  name: IDEMPOTENCY_HEADER,
+  required: false,
+  description:
+    'Optional unique ID (e.g. a UUID). Repeating the same request with the same key returns the first response instead of doing it again.',
+});
 
 @ApiTags('savings-goals')
 @ApiBearerAuth('access-token')
@@ -27,6 +44,8 @@ export class SavingsGoalsController {
   constructor(private readonly savingsGoalsService: SavingsGoalsService) {}
 
   @Post()
+  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotencyKeyHeader
   @ApiOperation({ summary: 'Create a savings goal' })
   create(
     @CurrentUser() user: { userId: string },
@@ -71,6 +90,8 @@ export class SavingsGoalsController {
   }
 
   @Post(':id/contributions')
+  @UseInterceptors(IdempotencyInterceptor)
+  @IdempotencyKeyHeader
   @ApiOperation({ summary: 'Add money to a savings goal' })
   contribute(
     @CurrentUser() user: { userId: string },

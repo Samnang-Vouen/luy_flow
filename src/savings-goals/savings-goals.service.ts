@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { fromCents, toCents } from '../common/money.util';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -27,22 +29,63 @@ export class SavingsGoalsService {
   ) {}
 
   async create(userId: string, dto: CreateSavingsGoalDto) {
-    const goal = await this.goalsRepository.save(
-      this.goalsRepository.create({
-        userId,
-        name: dto.name,
-        targetAmount: dto.targetAmount.toFixed(2),
-        targetDate: dto.targetDate ?? null,
-      }),
-    );
+    const ref = dto.externalRef;
+    if (ref) {
+      await this.throwIfExternalRefTaken(userId, ref.source, ref.id);
+    }
+
+    let goal: SavingsGoal;
+    try {
+      goal = await this.goalsRepository.save(
+        this.goalsRepository.create({
+          userId,
+          name: dto.name,
+          targetAmount: dto.targetAmount.toFixed(2),
+          targetDate: dto.targetDate ?? null,
+          currency: dto.currency ?? 'USD',
+          externalSource: ref?.source ?? null,
+          externalId: ref?.id ?? null,
+        }),
+      );
+    } catch (err) {
+      // Two requests with the same externalRef raced past the check above.
+      if (ref && isUniqueViolation(err)) {
+        await this.throwIfExternalRefTaken(userId, ref.source, ref.id);
+      }
+      throw err;
+    }
+
     await this.auditLogsService.record({
       actorUserId: userId,
       action: 'savings_goal.created',
       resourceType: 'savings_goal',
       resourceId: goal.id,
-      metadata: { targetAmount: goal.targetAmount },
+      metadata: {
+        targetAmount: goal.targetAmount,
+        currency: goal.currency,
+        ...(ref && { externalSource: ref.source, externalId: ref.id }),
+      },
     });
     return goal;
+  }
+
+  /** 409 with the existing goal, so the caller can link to it instead of creating a duplicate. */
+  private async throwIfExternalRefTaken(
+    userId: string,
+    externalSource: string,
+    externalId: string,
+  ) {
+    const existing = await this.goalsRepository.findOne({
+      where: { userId, externalSource, externalId },
+    });
+    if (existing) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: 'Conflict',
+        message: 'A savings goal already exists for this externalRef',
+        goal: existing,
+      });
+    }
   }
 
   findAll(userId: string) {
@@ -106,6 +149,11 @@ export class SavingsGoalsService {
         if (locked.status !== SavingsGoalStatus.ACTIVE) {
           throw new BadRequestException('Savings goal is not active');
         }
+        if (dto.currency !== undefined && dto.currency !== locked.currency) {
+          throw new UnprocessableEntityException(
+            `Contribution currency ${dto.currency} does not match the goal currency ${locked.currency}`,
+          );
+        }
 
         const saved = await manager.save(
           manager.create(SavingsGoalContribution, {
@@ -158,4 +206,11 @@ export class SavingsGoalsService {
     }
     return goal;
   }
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    err instanceof QueryFailedError &&
+    (err.driverError as { code?: string } | undefined)?.code === '23505'
+  );
 }
