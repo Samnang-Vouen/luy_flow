@@ -27,6 +27,7 @@ import { ExportsModule } from './exports/exports.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { ReportsModule } from './reports/reports.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
+import { OAuthModule } from './oauth/oauth.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     BudgetsModule,
     ReportsModule,
     RecommendationsModule,
+    OAuthModule,
   ],
   controllers: [AppController],
   providers: [
