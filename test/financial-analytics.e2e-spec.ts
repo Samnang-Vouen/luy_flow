@@ -16,6 +16,7 @@ import { RecommendationsService } from '../src/recommendations/recommendations.s
 import { ReportsController } from '../src/reports/reports.controller';
 import { ReportsService } from '../src/reports/reports.service';
 import { Transaction } from '../src/transactions/entities/transaction.entity';
+import { UsersService } from '../src/users/users.service';
 
 // Real HTTP controllers, validation, JWT strategy and services; repository doubles
 // keep this suite independent of PostgreSQL/Redis. This does not verify live SQL.
@@ -86,6 +87,18 @@ describe('Financial analytics HTTP integration', () => {
         },
         { provide: CategoriesService, useValue: { findOwned: jest.fn() } },
         { provide: AuditLogsService, useValue: { record: jest.fn() } },
+        {
+          provide: UsersService,
+          useValue: {
+            // The JWT strategy re-reads the user so deactivation applies.
+            findById: jest.fn(async (id: string) => ({
+              id,
+              email: 'owner@example.test',
+              role: 'user',
+              isActive: true,
+            })),
+          },
+        },
       ],
     }).compile();
     app = moduleRef.createNestApplication();

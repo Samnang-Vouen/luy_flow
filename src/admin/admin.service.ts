@@ -5,10 +5,14 @@ import {
 } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/entities/user.entity';
+import { SessionsService } from '../sessions/sessions.service';
 
 @Injectable()
 export class AdminService {
-    constructor(private readonly usersService: UsersService) {}
+    constructor(
+        private readonly usersService: UsersService,
+        private readonly sessionsService: SessionsService,
+    ) {}
 
     async listUsers(page = 1, limit = 20) {
         const [users, total] = await this.usersService.findAllPaginated(
@@ -70,6 +74,13 @@ export class AdminService {
         }
 
         const updated = await this.usersService.updateStatus(userId, isActive);
+
+        // Deactivation is effective immediately: drop every refresh token so the
+        // account cannot rotate its way back in.
+        if (!isActive) {
+            await this.sessionsService.deleteAllByUser(userId);
+        }
+
         return {
         id: updated.id,
         isActive: updated.isActive,

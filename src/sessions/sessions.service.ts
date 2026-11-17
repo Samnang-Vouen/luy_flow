@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { Session } from './entities/session.entity';
 
 @Injectable()
@@ -38,12 +38,32 @@ export class SessionsService {
         return this.sessionsRepository.findOne({ where: { id } });
     }
 
+    /**
+     * Looks a session up by the SHA-256 hash of its refresh token. Backed by
+     * the unique index on `refreshTokenHash`, so this is a single index probe
+     * rather than a scan-and-verify across every session.
+     */
+    async findByRefreshTokenHash(
+        refreshTokenHash: string,
+    ): Promise<Session | null> {
+        return this.sessionsRepository.findOne({
+            where: { refreshTokenHash },
+        });
+    }
+
     async deleteById(id: string): Promise<void> {
         await this.sessionsRepository.delete({ id });
     }
 
     async deleteAllByUser(userId: string): Promise<void> {
         await this.sessionsRepository.delete({ userId });
+    }
+
+    /** Removes sessions that are already past their expiry (indexed delete). */
+    async deleteExpired(): Promise<void> {
+        await this.sessionsRepository.delete({
+            expiresAt: LessThan(new Date()),
+        });
     }
 
 }

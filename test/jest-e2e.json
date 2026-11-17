@@ -5,6 +5,9 @@
   "testRegex": ".e2e-spec.ts$",
   "extensionsToTreatAsEsm": [".ts"],
   "setupFilesAfterEnv": ["<rootDir>/jest-global.setup.ts"],
+  "moduleNameMapper": {
+    "^@nestjs/throttler$": "<rootDir>/mocks/nestjs-throttler.ts"
+  },
   "transform": {
     "^.+\\.ts$": [
       "ts-jest",
