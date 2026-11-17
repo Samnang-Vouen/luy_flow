@@ -13,6 +13,9 @@ import databaseConfig from './config/database.config';
 import { RecurringTransactionsModule } from './recurring-transactions/recurring-transactions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogsModule } from './audit-logs/audit-logs.module';
+import { SavingsGoalsModule } from './savings-goals/savings-goals.module';
+import { DebtsModule } from './debts/debts.module';
+import { GroupsModule } from './groups/groups.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { CategoriesModule } from './categories/categories.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
@@ -56,6 +59,9 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     RecurringTransactionsModule,
     NotificationsModule,
     AuditLogsModule,
+    SavingsGoalsModule,
+    DebtsModule,
+    GroupsModule,
     BudgetsModule,
     ReportsModule,
     RecommendationsModule,

@@ -39,6 +39,14 @@ The new tables are created by the `AddAutomationModules` migration. Apply pendin
 npm run typeorm -- migration:run
 ```
 
+## Savings, debts and groups modules
+
+- `savings-goals`: personal goals with contributions. A goal becomes `completed` when the saved amount reaches the target, and the user gets a notification.
+- `debts`: money owed by or to the user, with payments. Overpayment is rejected; a debt becomes `paid` at zero.
+- `groups`: shared pots. The creator is the owner; the owner adds members by email; members contribute and see the history. Non-members get 404.
+
+Tables are created by the `AddSavingsDebtsGroups` migration. The schema is in `docs/erd-savings-debts-groups.md`. `accountId` on contributions and payments is a placeholder until the Accounts module exists.
+
 Recurring schedules currently reference an account by ID without a database foreign key because the Accounts module is still being developed. Coordinate with its owner before integrating payment execution.
 
 ## Project setup
