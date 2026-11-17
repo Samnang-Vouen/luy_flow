@@ -121,6 +121,37 @@ npm run start:dev             # http://localhost:3000
 
 ## Modules
 
+Every route except register, login, the password-reset routes, `GET /` and `/oauth/*` needs
+`Authorization: Bearer <access token>`. Users only see their own data, except groups (shared with members) and
+`/admin` (admins). The full list of routes and fields is in Swagger at `/api`.
+
+| Area | Module | Base path | What it does |
+| --- | --- | --- | --- |
+| Access | `auth` | `/auth` | Register, log in, rotate refresh tokens, log out (one or all sessions), forgot and reset password |
+| | `users` | `/users/me` | Profile and preferences, change password, list and revoke your sessions |
+| | `sessions` | (used by `auth`, `users`) | Refresh-token sessions, stored as SHA-256 digests |
+| | `admin` | `/admin` | Admins only: list and view users, activate or deactivate them, change roles |
+| | `oauth` | `/oauth` | Lets TripSplit connect to an account without the password (see below) |
+| Money records | `accounts` | `/accounts` | Cash and bank accounts, each in one currency (fixed after creation). Archive instead of delete. |
+| | `categories` | `/categories` | Income and expense categories per user. Rename or archive. |
+| | `payment-methods` | `/payment-methods` | Payment methods per user. Rename or archive. |
+| | `transactions` | `/transactions` | Income and expenses, with search, filters, sorting and pagination |
+| | `recurring-transactions` | `/recurring-transactions` | Recurring schedules: create, update, pause or resume, delete |
+| Import and export | `imports` | `/imports`, `/import-profiles` | Upload a bank statement, processed in the background. Preview and edit rows (duplicates are flagged), then confirm. A confirmed import can be undone. Profiles store the column mapping per bank. |
+| | `exports` | `/exports` | Download transactions as CSV or Excel for a month or a date range |
+| Planning and insight | `budgets` | `/budgets` | Monthly budgets, overall or per category and currency, with progress against actual spending |
+| | `reports` | `/reports` | Income, expenses, surplus and savings rate; totals by category; trends by day, week, month or year |
+| | `recommendations` | `/recommendations` | Monthly savings suggestions, budget warnings and unusual category spending |
+| Saving and sharing | `savings-goals` | `/savings-goals` | Goals with contributions, a currency and an optional `externalRef`. `Idempotency-Key` on create and contribute. |
+| | `debts` | `/debts` | Money owed by or to the user, with payments |
+| | `groups` | `/groups` | Shared pots: members, contributions and history |
+| Support | `notifications` | `/notifications` | In-app notifications: list, unread count, mark as read |
+| | `audit-logs` | `/audit-logs` | Each user's recent actions |
+| | `common/idempotency` | (used by `savings-goals`) | Replays the first response when a POST is retried with the same `Idempotency-Key` |
+
+Rate limits: 5 requests per minute per IP for login, register, the password-reset routes and the OAuth consent form;
+30 for token refresh and logout; 100 for everything else.
+
 ### Automation modules
 
 The application includes three authenticated modules:
