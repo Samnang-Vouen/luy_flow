@@ -1,5 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { resolve } from 'path';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -31,11 +32,9 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      // process.cwd() works under both the CommonJS build and Jest's ESM
-      // runtime, where __dirname is not defined.
-      envFilePath: resolve(process.cwd(), '.env'),
       // Loads .env from the working directory (the repo root for all npm scripts).
       // Not resolved from __dirname: that doesn't exist when Jest runs the app as ES modules.
+      envFilePath: resolve(process.cwd(), '.env'),
       load: [databaseConfig],
       cache: true,
     }),
