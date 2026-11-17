@@ -12,7 +12,7 @@ const paths = tsconfig?.compilerOptions?.paths ?? {};
 
 // NestJS 12 ships as ES modules only, so Jest runs in ESM mode
 // (see the `test` scripts, which pass --experimental-vm-modules).
-// In spec files, import `jest` from '@jest/globals'; it is not a global in ESM mode.
+// ESM mode doesn't make `jest` a global, so test/jest-global.setup.ts does.
 const tsJestTransform: Config['transform'] = {
   '^.+\\.ts$': [
     'ts-jest',
@@ -34,9 +34,7 @@ const config: Config = {
   testRegex: '.*\\.spec\\.ts$',
   extensionsToTreatAsEsm: ['.ts'],
   transform: tsJestTransform,
-  transform: {
-    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: 'tsconfig.spec.json' }],
-  },
+  setupFilesAfterEnv: ['<rootDir>/test/jest-global.setup.ts'],
   moduleNameMapper: pathsToModuleNameMapper(paths, { prefix: '<rootDir>/' }),
   collectCoverageFrom: [
     'src/**/*.(t|j)s',
