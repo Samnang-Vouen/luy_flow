@@ -71,31 +71,42 @@ export class AuthService {
         return refreshToken;
     }
 
+    /**
+     * The user for this email and password, or null when the email is unknown,
+     * the password is wrong or the account is deactivated. Callers must not tell
+     * these cases apart: a deactivated account looks like a non-existent one.
+     */
+    async validateCredentials(email: string, password: string) {
+        const user = await this.usersService.findByEmail(email);
+        if (!user) return null;
+
+        const isValid = await verifyPassword(user.passwordHash, password);
+        if (!isValid || !user.isActive) return null;
+
+        return user;
+    }
+
+    /** Access + refresh token for a user who has already been authenticated (password login or OAuth). */
+    async issueTokens(
+        user: { id: string; email: string; role: string },
+        userAgent?: string,
+        ipAddress?: string,
+    ) {
+        const accessToken = this.generateAccessToken(user);
+        const refreshToken = await this.createSessionWithRefreshToken(
+            user.id,
+            userAgent,
+            ipAddress,
+        );
+        return { accessToken, refreshToken };
+    }
+
     async login(dto: LoginDto, userAgent?: string, ipAddress?: string) {
-        const user = await this.usersService.findByEmail(dto.email);
+        const user = await this.validateCredentials(dto.email, dto.password);
         if (!user) {
             throw new UnauthorizedException('Invalid credentials');
         }
-
-    const isValid = await verifyPassword(user.passwordHash, dto.password);
-    if (!isValid) {
-        throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Deliberately the same message as a wrong password: a deactivated account
-    // must not be distinguishable from a non-existent one.
-    if (!user.isActive) {
-        throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const accessToken = this.generateAccessToken(user);
-    const refreshToken = await this.createSessionWithRefreshToken(
-        user.id,
-        userAgent,
-        ipAddress,
-    );
-
-    return { accessToken, refreshToken };
+        return this.issueTokens(user, userAgent, ipAddress);
     }
 
     async refresh(refreshToken: string, userAgent?: string, ipAddress?: string) {
