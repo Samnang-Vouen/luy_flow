@@ -1,13 +1,20 @@
+# Only package files, tsconfig*, nest-cli.json and src/ are needed to build the image.
 node_modules
 dist
 coverage
+test
+docs
+deploy
 .git
+.github
 .gitignore
 .env
 .env.*
 *.log
+*.md
 .vscode
 .idea
-docs
-deploy
 Dockerfile
+.dockerignore
+compose.yaml
+docker-compose*.yml
