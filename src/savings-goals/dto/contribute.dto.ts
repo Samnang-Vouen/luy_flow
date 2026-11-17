@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsISO4217CurrencyCode,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -15,6 +16,18 @@ export class ContributeDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
+
+  @ApiPropertyOptional({
+    example: 'USD',
+    description:
+      "If sent, must equal the goal's currency or the request is rejected with 422. No conversion is done.",
+  })
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsISO4217CurrencyCode()
+  currency?: string;
 
   @ApiPropertyOptional({ maxLength: 255 })
   @IsOptional()
